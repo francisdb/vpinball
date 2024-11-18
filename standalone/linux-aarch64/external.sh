@@ -13,6 +13,7 @@ LIBDOF_SHA=5c43c99ea28b44bb58b74554c4303a505e208148
 FFMPEG_SHA=b08d7969c550a804a59511c7b83f2dd8cc0499b8
 BGFX_CMAKE_VERSION=1.128.8808-482
 BGFX_PATCH_SHA=a0d4c179527a4a4d205598ebf290c0b45144bda8
+OPENXR_SHA=b15ef6ce120dad1c7d3ff57039e73ba1a9f17102
 
 NUM_PROCS=$(nproc)
 
@@ -28,6 +29,7 @@ echo "  LIBDOF_SHA: ${LIBDOF_SHA}"
 echo "  FFMPEG_SHA: ${FFMPEG_SHA}"
 echo "  BGFX_CMAKE_VERSION: ${BGFX_CMAKE_VERSION}"
 echo "  BGFX_PATCH_SHA: ${BGFX_PATCH_SHA}"
+echo "  OPENXR_SHA: ${OPENXR_SHA}"
 echo ""
 
 if [ -z "${BUILD_TYPE}" ]; then
@@ -339,3 +341,27 @@ fi
 
 cp -r ../${CACHE_DIR}/${CACHE_NAME}/include/* ../external/include
 cp ../${CACHE_DIR}/${CACHE_NAME}/lib/*.so ../external/lib
+
+#
+# build openxr and copy to external
+#
+CACHE_NAME="openxr-${OPENXR_SHA}"
+if [ ! -f "../${CACHE_DIR}/${CACHE_NAME}.cache" ]; then
+   curl -sL https://github.com/KhronosGroup/OpenXR-SDK-Source/archive/${OPENXR_SHA}.zip -o openxr.zip
+   unzip openxr.zip
+   cd OpenXR-SDK-Source-$OPENXR_SHA
+   cmake  \
+      -DBUILD_TESTS=OFF \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -B build
+   cmake --build build -- -j${NUM_PROCS}
+   mkdir -p ../../${CACHE_DIR}/${CACHE_NAME}/include/openxr
+   cp -r build/include/openxr/*.h ../../${CACHE_DIR}/${CACHE_NAME}/include/openxr
+   mkdir -p ../../${CACHE_DIR}/${CACHE_NAME}/lib
+   cp -a build/src/loader/*.so ../../${CACHE_DIR}/${CACHE_NAME}/lib
+   cd ..
+   touch "../${CACHE_DIR}/${CACHE_NAME}.cache"
+fi
+mkdir -p ../external/include/openxr
+cp -r ../${CACHE_DIR}/${CACHE_NAME}/include/openxr/* ../external/include/openxr
+cp -a ../${CACHE_DIR}/${CACHE_NAME}/lib/*.so ../external/lib

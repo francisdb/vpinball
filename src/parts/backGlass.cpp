@@ -7,12 +7,11 @@
 #include "renderer/Shader.h"
 #ifndef __STANDALONE__
    #include "renderer/captureExt.h"
-   #if defined(ENABLE_VR) || defined(ENABLE_XR)
-      #include <fstream>
-      #include "tinyxml2/tinyxml2.h"
-   #endif
 #endif
-
+#if defined(ENABLE_VR) || defined(ENABLE_XR)
+   #include <fstream>
+   #include "tinyxml2/tinyxml2.h"
+#endif
 //#define WRITE_BACKGLASS_IMAGES
 #ifdef WRITE_BACKGLASS_IMAGES
  #include <iostream>

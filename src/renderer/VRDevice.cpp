@@ -13,17 +13,25 @@
    #include "bx/math.h"
    #include "bx/os.h"
 
-   #ifdef BX_PLATFORM_WINDOWS
+   #if BX_PLATFORM_WINDOWS
       #define XR_USE_PLATFORM_WIN32
       //#define XR_USE_GRAPHICS_API_VULKAN
       #define XR_USE_GRAPHICS_API_OPENGL
       #define XR_USE_GRAPHICS_API_OPENGL_ES
       #define XR_USE_GRAPHICS_API_D3D11
       //#define XR_USE_GRAPHICS_API_D3D12
-   #elif defined(BX_PLATFORM_ANDROID)
+   #elif BX_PLATFORM_ANDROID
       #define XR_USE_PLATFORM_ANDROID
       //#define XR_USE_GRAPHICS_API_VULKAN
       #define XR_USE_GRAPHICS_API_OPENGL_ES
+   #elif BX_PLATFORM_LINUX
+      #define XR_USE_PLATFORM_XLIB
+      #define XR_USE_GRAPHICS_API_VULKAN
+   #elif BX_PLATFORM_OSX
+      #define XR_USE_PLATFORM_MACOS
+      #define XR_USE_GRAPHICS_API_METAL
+   #else
+      #error "Unsupported OpenXR platform"
    #endif
 
    // OpenXR Dependencies
@@ -640,10 +648,19 @@ VRDevice::VRDevice()
          }
          return false;
       };
-      //const bool hasGraphicBackend = EnableExtentionIfSupported(XR_KHR_OPENGL_ENABLE_EXTENSION_NAME);
-      //const bool hasGraphicBackend = EnableExtentionIfSupported(XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME);
-      //const bool hasGraphicBackend = EnableExtentionIfSupported(XR_KHR_VULKAN_ENABLE_EXTENSION_NAME);
+      #if defined(XR_USE_GRAPHICS_API_D3D11)
       const bool hasGraphicBackend = EnableExtentionIfSupported(XR_KHR_D3D11_ENABLE_EXTENSION_NAME);
+      #elif defined(XR_USE_GRAPHOCS_API_VULKAN)
+      const bool hasGraphicBackend = EnableExtentionIfSupported(XR_KHR_VULKAN_ENABLE_EXTENSION_NAME);
+      #elif defined(XR_USE_GRAPHICS_API_OPENGL)
+      const bool hasGraphicBackend = EnableExtentionIfSupported(XR_KHR_OPENGL_ENABLE_EXTENSION_NAME);
+      #elif defined(XR_USE_GRAPHICS_API_OPENGL_ES)
+      const bool hasGraphicBackend = EnableExtentionIfSupported(XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME);
+      #elif defined(XR_USE_GRAPHICS_API_METAL)
+      const bool hasGraphicBackend = EnableExtentionIfSupported(XR_KHR_METAL_ENABLE_EXTENSION_NAME);
+      #else
+      const bool hasGraphicBackend = false;
+      #endif
       //const bool hasGraphicBackend = EnableExtentionIfSupported(XR_KHR_D3D12_ENABLE_EXTENSION_NAME);
       assert(hasGraphicBackend);
       // FIXME OpenXR: Strangely enough, performance drops if XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME is enabled
@@ -999,7 +1016,11 @@ void VRDevice::CreateSession()
    assert(m_xrInstance != XR_NULL_HANDLE);
    assert(m_systemID != XR_NULL_SYSTEM_ID);
    assert(m_session == XR_NULL_HANDLE);
+   #if defined(XR_USE_GRAPHICS_API_D3D11)
    m_backend = new XRD3D11Backend(m_xrInstance, m_systemID);
+   #else
+      assert(false);
+   #endif
 
    // Since we are using texture array rendering, we need target to be stereo views with the same setup
    assert(m_viewConfigurationViews.size() == 2);
