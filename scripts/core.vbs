@@ -1323,6 +1323,90 @@ Class cvpmDropTarget
 	Public Sub DropSol_On : SolDropUp True : End Sub
 End Class
 
+'----------------------------
+'	  Ball tracking
+'----------------------------
+' Tracks the balls overlapping a device trigger (magnet, turntable, impulse
+' plunger). Balls are tracked by their stable integer ID, not by ball object:
+' a ball can be destroyed (drain, kicker.DestroyBall, ...) while it is still
+' inside the trigger, in which case no UnHit fires and the entry is never
+' removed. A destroyed ball object can no longer be hashed or removed from a
+' Scripting.Dictionary (its IUnknown is gone), which both leaked stale entries
+' and raised errors. Integer IDs are always comparable and removable, and dead
+' entries are reconciled against GetBalls (the live ball list) every Update.
+'
+' mCnt is a per-ball overlap count so a device built from several triggers
+' keeps the ball until it has left all of them.
+Class cvpmBallTracker
+	Private mIds()			' tracked ball IDs
+	Private mCnt()			' parallel overlap counts
+	Private mN				' number of tracked balls
+
+	Private Sub Class_Initialize : mN = 0 : ReDim mIds(7) : ReDim mCnt(7) : End Sub
+
+	Public Property Get Count : Count = mN : End Property
+
+	Private Function IndexOf(aId)
+		Dim i : IndexOf = -1
+		For i = 0 To mN - 1
+			If mIds(i) = aId Then IndexOf = i : Exit Function
+		Next
+	End Function
+
+	Public Function Has(aId) : Has = (IndexOf(aId) >= 0) : End Function
+
+	' Track aId (incrementing its overlap count). Returns True if newly added.
+	Public Function Add(aId)
+		Dim i : i = IndexOf(aId)
+		If i >= 0 Then
+			mCnt(i) = mCnt(i) + 1 : Add = False
+		Else
+			If mN > UBound(mIds) Then ReDim Preserve mIds(2*mN+1) : ReDim Preserve mCnt(2*mN+1)
+			mIds(mN) = aId : mCnt(mN) = 1 : mN = mN + 1 : Add = True
+		End If
+	End Function
+
+	' Decrement aId's overlap count, dropping it once it reaches zero.
+	Public Sub Remove(aId)
+		Dim i : i = IndexOf(aId)
+		If i < 0 Then Exit Sub
+		mCnt(i) = mCnt(i) - 1
+		If mCnt(i) <= 0 Then RemoveAt i
+	End Sub
+
+	Private Sub RemoveAt(aIndex)
+		Dim j
+		For j = aIndex To mN - 2 : mIds(j) = mIds(j+1) : mCnt(j) = mCnt(j+1) : Next
+		mN = mN - 1
+	End Sub
+
+	' Drop tracked IDs whose ball is no longer in aLiveBalls (GetBalls).
+	Public Sub KeepOnly(aLiveBalls)
+		Dim i, keepIds(), keepCnt(), k : k = 0
+		ReDim keepIds(mN) : ReDim keepCnt(mN)
+		For i = 0 To mN - 1
+			If LiveHasId(aLiveBalls, mIds(i)) Then keepIds(k) = mIds(i) : keepCnt(k) = mCnt(i) : k = k + 1
+		Next
+		mIds = keepIds : mCnt = keepCnt : mN = k
+	End Sub
+
+	' Ball objects from aLiveBalls that are currently tracked (for the public Balls getter).
+	Public Function LiveBalls(aLiveBalls)
+		Dim b, res(), k : k = 0 : ReDim res(mN)
+		For Each b In aLiveBalls
+			If Has(b.ID) Then Set res(k) = b : k = k + 1
+		Next
+		If k = 0 Then LiveBalls = Array() Else ReDim Preserve res(k-1) : LiveBalls = res
+	End Function
+
+	Private Function LiveHasId(aLiveBalls, aId)
+		Dim b : LiveHasId = False
+		For Each b In aLiveBalls
+			If b.ID = aId Then LiveHasId = True : Exit Function
+		Next
+	End Function
+End Class
+
 '--------------------
 '		Magnet
 '--------------------
@@ -1332,7 +1416,7 @@ Class cvpmMagnet
 
 	Private Sub Class_Initialize
 		Size = 1 : Strength = 0 : Solenoid = 0 : mEnabled = False
-		Set mBalls = New cvpmDictionary
+		Set mBalls = New cvpmBallTracker
 	End Sub
 
 	Private Property Let NeedUpdate(aEnabled) : vpmTimer.EnableUpdate Me, True, aEnabled : End Property
@@ -1358,29 +1442,25 @@ Class cvpmMagnet
 	End Property
 
 	Public Sub AddBall(aBall)
-		With mBalls
-			If .Exists(aBall) Then .Item(aBall) = .Item(aBall) + 1 Else .Add aBall, 1 : NeedUpdate = True
-		End With
+		If mBalls.Add(aBall.ID) Then NeedUpdate = True
 	End Sub
 
 	Public Sub RemoveBall(aBall)
-		With mBalls
-			If .Exists(aBall) Then .Item(aBall) = .Item(aBall) - 1 : If .Item(aBall) <= 0 Then .Remove aBall
-			NeedUpdate = (.Count > 0)
-		End With
+		mBalls.Remove aBall.ID : NeedUpdate = (mBalls.Count > 0)
 	End Sub
 
-	Public Property Get Balls : Balls = mBalls.Keys : End Property
+	Public Property Get Balls : Balls = mBalls.LiveBalls(GetBalls) : End Property
 
 	Public Sub Update
-		Dim obj
-		If MagnetOn Then
-			On Error Resume Next
-			For Each obj In mBalls.Keys
-				If obj.X < 0 Or Err Then mBalls.Remove obj Else AttractBall obj
-			Next
-			On Error Goto 0
-		End If
+		If mBalls.Count = 0 Then Exit Sub
+		Dim b, allBalls, hits : allBalls = GetBalls : hits = 0
+		For Each b In allBalls
+			If mBalls.Has(b.ID) Then
+				hits = hits + 1
+				If MagnetOn Then AttractBall b
+			End If
+		Next
+		If hits < mBalls.Count Then mBalls.KeepOnly allBalls : NeedUpdate = (mBalls.Count > 0)
 	End Sub
 
 	Public Sub AttractBall(aBall)
@@ -1411,7 +1491,7 @@ Class cvpmTurntable
 	Public Speed
 
 	Private Sub Class_Initialize
-		Set mBalls = New cvpmDictionary
+		Set mBalls = New cvpmBallTracker
 		mMotorOn = False : mSpinCW = True : Speed = 0 : mSpinUp = 10 : mSpinDown = 4
 		AdjustTargets
 	End Sub
@@ -1465,13 +1545,12 @@ Class cvpmTurntable
 	Public Property Get SpinCW : SpinCW = mSpinCW : End Property
 
 	Public Sub AddBall(aBall)
-		On Error Resume Next : mBalls.Add aBall,0 : NeedUpdate = True
+		mBalls.Add aBall.ID : NeedUpdate = True
 	End Sub
 	Public Sub RemoveBall(aBall)
-		On Error Resume Next
-		mBalls.Remove aBall : NeedUpdate = mBalls.Count Or SpinUp Or SpinDown
+		mBalls.Remove aBall.ID : NeedUpdate = mBalls.Count Or SpinUp Or SpinDown
 	End Sub
-	Public Property Get Balls : Balls = mBalls.Keys : End Property
+	Public Property Get Balls : Balls = mBalls.LiveBalls(GetBalls) : End Property
 
 	Public Sub Update
 		If Speed > mTargetSpeed Then
@@ -1482,13 +1561,15 @@ Class cvpmTurntable
 			If Speed > mTargetSpeed Then Speed = mTargetSpeed : NeedUpdate = mBalls.Count
 		End If
 
-		If Speed Then
-			Dim obj
-			On Error Resume Next
-			For Each obj In mBalls.Keys
-				If obj.X < 0 Or Err Then mBalls.Remove obj Else AffectBall obj
+		If mBalls.Count > 0 Then
+			Dim b, allBalls, hits : allBalls = GetBalls : hits = 0
+			For Each b In allBalls
+				If mBalls.Has(b.ID) Then
+					hits = hits + 1
+					If Speed Then AffectBall b
+				End If
 			Next
-			On Error Goto 0
+			If hits < mBalls.Count Then mBalls.KeepOnly allBalls
 		End If
 	End Sub
 
@@ -1894,7 +1975,7 @@ Class cvpmImpulseP
 	Private Sub Class_Initialize
 		Size = 1 : Strength = 0 : Solenoid = 0 : Res = 1 : IMPowerOut = 0 : Time = 0 : mCount = 0 : mEnabled = False
 		Pull = 0 : IMPowerTrans = 0 : Auto = False : RandomOut = 0 : SwitchOn = 0 : SwitchNum = 0 : BallOn = 0
-		Set mBalls = New cvpmDictionary
+		Set mBalls = New cvpmBallTracker
 	End Sub
 
 	Private Property Let NeedUpdate(aEnabled) : vpmTimer.EnableUpdate Me, True, aEnabled : End Property
@@ -1930,9 +2011,7 @@ Class cvpmImpulseP
 
 	Public Sub AddBall(aBall)
 		Dim mSwcopy
-		With mBalls
-			If .Exists(aBall) Then .Item(aBall) = .Item(aBall) + 1 Else .Add aBall, 1 : NeedUpdate = True
-		End With
+		If mBalls.Add(aBall.ID) Then NeedUpdate = True
 		If SwitchOn = True Then
 			mSwcopy = SwitchNum
 			Controller.Switch(mSwcopy) = 1
@@ -1942,10 +2021,7 @@ Class cvpmImpulseP
 
 	Public Sub RemoveBall(aBall)
 		Dim mSwcopy
-		With mBalls
-			If .Exists(aBall) Then .Item(aBall) = .Item(aBall) - 1 : If .Item(aBall) <= 0 Then .Remove aBall
-			NeedUpdate = (.Count > 0)
-		End With
+		mBalls.Remove aBall.ID : NeedUpdate = (mBalls.Count > 0)
 		If SwitchOn = True Then
 			mSwcopy = SwitchNum
 			Controller.Switch(mSwcopy) = 0
@@ -1953,10 +2029,9 @@ Class cvpmImpulseP
 		BallOn = 0
 	End Sub
 
-	Public Property Get Balls : Balls = mBalls.Keys : End Property
+	Public Property Get Balls : Balls = mBalls.LiveBalls(GetBalls) : End Property
 
 	Public Sub Update
-		Dim obj
 		If pull = 1 and mCount < Res Then
 			mCount = mCount + cFactor
 			IMPowerTrans = mCount
@@ -1965,12 +2040,15 @@ Class cvpmImpulseP
 			IMPowerTrans = mCount
 			NeedUpdate = False
 		End If
-		If PlungeOn Then
-			On Error Resume Next
-			For Each obj In mBalls.Keys
-				If obj.X < 0 Or Err Then : mBalls.Remove obj : Else : PlungeBall obj : End If
+		If mBalls.Count > 0 Then
+			Dim b, allBalls, hits : allBalls = GetBalls : hits = 0
+			For Each b In allBalls
+				If mBalls.Has(b.ID) Then
+					hits = hits + 1
+					If PlungeOn Then PlungeBall b
+				End If
 			Next
-			On Error Goto 0
+			If hits < mBalls.Count Then mBalls.KeepOnly allBalls
 		End If
 	End Sub
 
