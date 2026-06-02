@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include <mutex>
+
 #include "unordered_dense.h"
 
 #include "parts/pinbinary.h"
@@ -137,6 +139,7 @@ private:
    mutable bool m_isOpaqueDirty = true;
    mutable bool m_isOpaque = true;
    mutable ankerl::unordered_dense::map<Format, std::shared_ptr<BaseTexture>> m_aliases;
+   mutable std::mutex m_aliasMutex; // m_aliases is read/cleared on the render thread and read by the DMD plugin worker thread
 };
 
 
