@@ -472,6 +472,80 @@ void Renderer::SwapBackBufferRenderTargets()
    m_pOffscreenBackBufferTexture2 = tmp;
 }
 
+void Renderer::RebuildOffscreenBuffers()
+{
+#ifdef ENABLE_BGFX
+   // VR renders at the fixed HMD eye resolution, independent of the output window size.
+   if (m_stereo3D == STEREO_VR || g_pplayer == nullptr)
+      return;
+
+   const VPX::Window* const wnd = g_pplayer->m_playfieldWnd;
+   int renderWidth, renderHeight;
+   if (m_stereo3D == STEREO_SBS)
+   {
+      renderWidth = wnd->GetPixelWidth() / 2;
+      renderHeight = wnd->GetPixelHeight();
+   }
+   else if (m_stereo3D == STEREO_TB || m_stereo3D == STEREO_INT || m_stereo3D == STEREO_FLIPPED_INT)
+   {
+      renderWidth = wnd->GetPixelWidth();
+      renderHeight = wnd->GetPixelHeight() / 2;
+   }
+   else
+   {
+      renderWidth = wnd->GetPixelWidth();
+      renderHeight = wnd->GetPixelHeight();
+   }
+   if (renderWidth == m_renderWidth && renderHeight == m_renderHeight)
+      return; // Output size did not change, nothing to rebuild
+
+   m_renderWidth = renderWidth;
+   m_renderHeight = renderHeight;
+   const float AAfactor = m_table->m_settings.GetPlayer_AAFactor();
+   const int renderWidthAA = (int)((float)m_renderWidth * AAfactor);
+   const int renderHeightAA = (int)((float)m_renderHeight * AAfactor);
+
+   // Recreate the main offscreen buffers, mirroring the format/type/MSAA used at construction (see the constructor).
+   constexpr int MSAASamples[] = { 1, 4, 6, 8, 16 };
+   const int nMSAASamples = MSAASamples[m_table->m_settings.GetPlayer_MSAASamples()];
+   const SurfaceType rtType = m_pOffscreenBackBufferTexture1->m_type;
+   const colorFormat renderFormat = m_pOffscreenBackBufferTexture1->GetColorFormat();
+   delete m_pOffscreenBackBufferTexture1;
+   delete m_pOffscreenBackBufferTexture2;
+   m_pOffscreenBackBufferTexture1
+      = new RenderTarget(m_renderDevice, rtType, "BackBuffer1"s, renderWidthAA, renderHeightAA, renderFormat, true, nMSAASamples, "Fatal Error: unable to create offscreen back buffer");
+   m_pOffscreenBackBufferTexture2 = m_pOffscreenBackBufferTexture1->Duplicate("BackBuffer2"s, false);
+
+   m_renderDevice->m_basicShader->SetVector(
+      SHADER_w_h_height, (float)(1.0 / (double)GetMSAABackBufferTexture()->GetWidth()), (float)(1.0 / (double)GetMSAABackBufferTexture()->GetHeight()), 0.0f, 0.0f);
+   m_renderDevice->m_ballShader->SetVector(SHADER_w_h_disableLighting,
+      1.5f / (float)GetPreviousBackBufferTexture()->GetWidth(), // UV Offset for sampling reflections
+      1.5f / (float)GetPreviousBackBufferTexture()->GetHeight(),
+      IsBallLightingDisabled() ? 1.f : 0.f, 0.f);
+
+   delete m_pBloomBufferTexture;
+   delete m_pBloomTmpBufferTexture;
+   m_pBloomBufferTexture = new RenderTarget(m_renderDevice, GetBackBufferTexture()->m_type, "BloomBuffer1"s, m_renderWidth / 4, m_renderHeight / 4,
+      GetBackBufferTexture()->GetColorFormat(), false, 1, "Fatal Error: unable to create bloom buffer!");
+   m_pBloomTmpBufferTexture = m_pBloomBufferTexture->Duplicate("BloomBuffer2"s);
+
+   // Drop the lazily allocated resolution dependent buffers so they are recreated at the new size on next use.
+   delete m_pPostProcessRenderTarget1;
+   m_pPostProcessRenderTarget1 = nullptr;
+   delete m_pPostProcessRenderTarget2;
+   m_pPostProcessRenderTarget2 = nullptr;
+   delete m_pReflectionBufferTexture;
+   m_pReflectionBufferTexture = nullptr;
+   delete m_pMotionBlurBufferTexture;
+   m_pMotionBlurBufferTexture = nullptr;
+   ReleaseAORenderTargets();
+
+   // Re-render the static prepass (recreated from the new back buffer) and recompute the layout for the new aspect ratio.
+   m_isStaticPrepassDirty = true;
+   InitLayout();
+#endif
+}
+
 RenderTarget* Renderer::GetPostProcessRenderTarget1()
 {
    if (m_pPostProcessRenderTarget1 == nullptr)

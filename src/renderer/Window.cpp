@@ -428,9 +428,13 @@ void Window::OnResized()
       m_pixelWidth = pixelWidth;
       m_pixelHeight = pixelHeight;
       #ifdef ENABLE_BGFX
-      // The RenderDevice automatically manages the backbuffer resize. For ancillary windows (BGFX only), we need to recreate the swapchain
-      if (m_backBuffer && g_pplayer && g_pplayer->m_playfieldWnd != this)
-      {
+      // The RenderDevice automatically manages the backbuffer resize.
+      if (g_pplayer && g_pplayer->m_renderer && g_pplayer->m_playfieldWnd == this)
+         // For the main playfield window, rebuild the render resolution dependent buffers so the output
+         // is not stretched (the offscreen render targets keep their original size otherwise).
+         g_pplayer->m_renderer->m_renderDevice->AddEndOfFrameCmd([]() { g_pplayer->m_renderer->RebuildOffscreenBuffers(); });
+      else if (m_backBuffer && g_pplayer && g_pplayer->m_playfieldWnd != this)
+      { // For ancillary windows, we need to recreate the swapchain
          g_pplayer->m_renderer->m_renderDevice->AddEndOfFrameCmd(
             [this]()
             {

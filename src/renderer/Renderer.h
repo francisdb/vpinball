@@ -27,6 +27,7 @@ public:
    int GetDisplayWidth() const; // Playfield display width, taking in consideration stretching applied by some stereo modes
    int GetDisplayHeight() const; // Playfield display width, taking in consideration stretching applied by some stereo modes
    float GetDisplayAspectRatio() const;
+   void RebuildOffscreenBuffers(); // Recreate the render resolution dependent buffers after the output window was resized (BGFX only), keeping game state
    void InitLayout(const float xpixoff = 0.f, const float ypixoff = 0.f); // Reset both the base and the current MVP to the default view setup, with an optional pixel offset for AA
    void SetFlip(ModelViewProj::FlipMode flipMode); // Flip the rendered image horizontally and/or vertically (e.g. for rear projection setups), applied to base MVP
    void SetViewProj(const Matrix3D& view, const Matrix3D& proj); // Override the MVP, applied to the base MVP

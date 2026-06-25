@@ -295,9 +295,8 @@ void DisplaySettingsPage::BuildWindowPage()
                  Settings& settings = m_player->m_ptable->m_settings;
                  settings.SetWindow_FullScreen(m_wndId, v, false);
 #ifdef ENABLE_BGFX
-                 // Apply the borderless fullscreen toggle live. The render resolution is still set up for
-                 // the previous window size, so the main window output is stretched until the game is
-                 // restarted (ancillary windows recreate their swapchain on resize and are not affected).
+                 // Apply the borderless fullscreen toggle live. The resize triggers a rebuild of the render
+                 // resolution dependent buffers (see Window::OnResized), so the output is not stretched.
                  Window* const wnd = m_isMainWindow ? m_player->m_playfieldWnd : GetOutput(m_wndId).GetWindow();
                  wnd->SetFullScreen(v);
                  if (!v)
@@ -309,8 +308,6 @@ void DisplaySettingsPage::BuildWindowPage()
                     wnd->SetSize(w, h);
                     wnd->SetPos(m_displays[wndDisplay].left + x, m_displays[wndDisplay].top + y);
                  }
-                 if (m_isMainWindow)
-                    m_delayApplyNotifId = m_player->m_liveUI->PushNotification("Rendering will be stretched until you restart the game"s, 5000, m_delayApplyNotifId);
 #else
                  m_delayApplyNotifId = m_player->m_liveUI->PushNotification("This change will be applied after restarting the game"s, 5000, m_delayApplyNotifId);
 #endif
@@ -471,10 +468,6 @@ void DisplaySettingsPage::BuildWindowPage()
                        }
                        size.x = v;
 
-                       if (m_isMainWindow)
-                          m_delayApplyNotifId
-                             = m_player->m_liveUI->PushNotification("You have changed main window size\nRendering will be stretched until you restart the game"s, 5000, m_delayApplyNotifId);
-
                        SDL_Point pos;
                        wnd->GetPos(pos.x, pos.y);
                        pos.x = clamp(pos.x - (size.x - prevSize.x) / 2, 0, containerWidth - size.x);
@@ -506,10 +499,6 @@ void DisplaySettingsPage::BuildWindowPage()
                           size.x = w;
                        }
                        size.y = v;
-
-                       if (m_isMainWindow)
-                          m_delayApplyNotifId
-                             = m_player->m_liveUI->PushNotification("You have changed main window size\nRendering will be stretched until you restart the game"s, 5000, m_delayApplyNotifId);
 
                        SDL_Point pos;
                        wnd->GetPos(pos.x, pos.y);
