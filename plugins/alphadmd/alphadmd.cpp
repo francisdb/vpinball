@@ -376,10 +376,10 @@ static void RenderThread()
          DrawDisplay(80,  0, lum, 1, true);
          DrawDisplay( 0, 11, lum, 2, true);
          DrawDisplay(80, 11, lum, 3, true);
-         DrawDisplay( 0, 22, lum, 4, true);
-         DrawDisplay(80, 22, lum, 5, true);
+         DrawDisplay( 0, 21, lum, 4, true); // 3 rows of 11px glyphs do not fit 32px: keep the bottom row inside the frame
+         DrawDisplay(80, 21, lum, 5, true);
          DrawDisplay(56, 11, lum, 6, true);
-         DrawDisplay(56, 22, lum, 7, true);
+         DrawDisplay(56, 21, lum, 7, true);
          break;
       case Layout_4x6_2x2: // Lots of games (4 players + credit/ball)
          DrawDisplay( 0,  0, lum, 0, true);
