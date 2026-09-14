@@ -37,6 +37,7 @@ public:
    void ReleaseMsgID(const unsigned int msgId);
 
    string ApplyScriptCOMObjectOverrides(const string& script) const;
+   string m_tableInfoPath; // backing store of the path returned by GetTableInfo
    IDispatch* CreateCOMPluginObject(const string& classId);
 
    std::shared_ptr<BaseTexture> GetTexture(VPXTexture texture) const;

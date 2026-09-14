@@ -27,10 +27,10 @@ void MSGPIAPI VPXPluginAPIImpl::GetTableInfo(VPXTableInfo* info)
    // Only valid in game
    if (g_pplayer != nullptr)
    {
-      // static as it needs to survive as C string after this function returns
-      static string filepath;
-      filepath = g_pplayer->m_ptable->m_filename.string();
-      info->path = filepath.c_str();
+      // Kept in the API object so the C string survives this call. Not a function static: plugins still call
+      // this from exit handlers (libpinmame broadcasts from a static destructor) after such a static is destroyed.
+      g_pplayer->m_pluginAPI.m_tableInfoPath = g_pplayer->m_ptable->m_filename.string();
+      info->path = g_pplayer->m_pluginAPI.m_tableInfoPath.c_str();
       info->tableWidth = g_pplayer->m_ptable->m_right;
       info->tableHeight = g_pplayer->m_ptable->m_bottom;
    }
